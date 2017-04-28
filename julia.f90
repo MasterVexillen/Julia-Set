@@ -4,9 +4,9 @@ function f(z,c)
   integer, parameter :: dp = selected_real_kind(15,300)
   complex(kind=dp), intent(in) :: z, c
   complex(kind=dp) :: f
-  complex(kind=dp), external :: cmppow, cmpsinh, cmplog
+  complex(kind=dp), external :: cmpsinh, cmplog
 
-  f = (z**2 + z) / cmplog(z) + c
+  f = z**2 + c
 end function f
 
 program julia
@@ -106,8 +106,8 @@ program julia
   hue_offset = hue_offset * pi / 180.0_dp
   do i = 1, maxstep
      hsv(i,1) = mod(2.0_dp * pi * real(i,dp) * hsv_freq(1) / real(maxstep,dp) + hue_offset, 2.0_dp * pi)
-     hsv(i,2) = 0.5_dp * (sin(2.0_dp * pi * i * hsv_freq(2) / real(maxstep,dp)) + 1)
-     hsv(i,3) = 0.5_dp * (cos(2.0_dp * pi * i * hsv_freq(3) / real(maxstep,dp)) + 1)
+     hsv(i,2) = 0.5_dp * (sin(2.0_dp * pi * i * hsv_freq(2) / real(maxstep,dp) - hue_offset) + 1)
+     hsv(i,3) = 0.5_dp * (cos(2.0_dp * pi * i * hsv_freq(3) / real(maxstep,dp) - hue_offset) + 1)
      hsv_curr = hsv(i,:)
      call hsv_to_rgb(hsv_curr, rgb_curr, maxcol)
      rgb(i,:) = rgb_curr(:)
@@ -207,25 +207,6 @@ function cmplog(z)
   arg = atan2(aimag(z), real(z,dp))
   cmplog = cmplx(log(abs(z)), arg, dp)
 end function cmplog
-
-function cmppow(base,expo)
-  implicit none
-
-  integer, parameter :: dp = selected_real_kind(15,300)
-  real(kind=dp), parameter :: pi = 3.141592653589793_dp
-
-  complex(kind=dp), intent(in) :: base, expo
-  real(kind=dp), dimension(2) :: basedm
-!  real(kind=dp), external :: demoivre
-  real(kind=dp) :: lnpowr, lnpowi
-  complex(kind=dp) :: cmppow
-
-  basedm = (/abs(base), atan2(aimag(base),real(base,dp)) /)
-  lnpowr = real(expo,dp) * log(basedm(1)) - aimag(expo) * basedm(2)
-  lnpowi = aimag(expo) * log(basedm(1)) + real(expo,dp) * basedm(2)
-
-  cmppow = exp(cmplx(lnpowr,lnpowi,dp))
-end function cmppow
 
 function cmpsinh(z)
   implicit none
