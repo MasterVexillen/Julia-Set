@@ -6,7 +6,7 @@ function f(z,c)
   complex(kind=dp) :: f
   complex(kind=dp), external :: cmpsinh, cmplog
 
-  f = z**5 + c
+  f = z**7 + c
 end function f
 
 program julia
@@ -75,7 +75,7 @@ program julia
   if (ierr.ne.0) stop 'Error opening grad.ppm in main'
 
   write(grad_unit, '(A2)') 'P3'
-  write(grad_unit, '(2(I4.4,1X))') pixel(1)-1, pixel(2)-1
+  write(grad_unit, '(2(I4.4,1X))') pixel(1)-2, pixel(2)-2
   write(grad_unit, '(I3.3)') maxcol
   
   ! calculations
@@ -110,12 +110,11 @@ program julia
 
   do i = 2, pixel(2)-1
      do j = 2, pixel(1)-1
-        grad(i,j) = steps(i+1,j+1) + steps(i-1,j-1) - steps(i-1,j) - steps(i,j-1)
+        grad(i,j) = steps(i+1,j+1) + steps(i-1,j-1) - steps(i-1,j+1) - steps(i+1,j-1)
      end do
   end do
   min_grad = minval(grad)
   max_grad = maxval(grad)
-  print*, min_grad, max_grad
         
   ! HSV colouring scheme for julia (+ conversion to RGB)
   allocate(hsv(maxstep, 3), stat=ierr)
@@ -136,7 +135,6 @@ program julia
      hsv_curr = hsv(i,:)
      call hsv_to_rgb(hsv_curr, rgb_curr, maxcol)
      rgb(i,:) = rgb_curr(:)
-!     write(colour_unit, *) i, hsv_curr(:), rgb_curr(:)
   end do
 
   ! output julia
@@ -159,11 +157,13 @@ program julia
   allocate(rgb(min_grad:max_grad, 3), stat=ierr)
   if (ierr.ne.0) stop 'Error allocating rgb2 in main.'
 
-  hue_offset = hue_offset * pi / 180.0_dp
   do i = min_grad, max_grad
-     hsv(i,1) = mod(2.0_dp * pi * real(i,dp) * hsv_freq(1) / real(max_grad-min_grad,dp) + hue_offset, 2.0_dp * pi)
-     hsv(i,2) = 0.5_dp * (sin(2.0_dp * pi * i * hsv_freq(2) / real(max_grad-min_grad,dp) - hue_offset) + 1)
-     hsv(i,3) = 0.5_dp * (cos(2.0_dp * pi * i * hsv_freq(3) / real(max_grad-min_grad,dp) - hue_offset) + 1)
+     hsv(i,1) = mod(2.0_dp * pi * real(i-min_grad,dp) * hsv_freq(1) / real(max_grad-min_grad,dp) &
+          & + hue_offset, 2.0_dp * pi)
+     hsv(i,2) = 0.5_dp * (sin(2.0_dp * pi * real(i-min_grad,dp) * hsv_freq(2) / real(max_grad-min_grad,dp) &
+          & - hue_offset) + 1)
+     hsv(i,3) = 0.5_dp * (cos(2.0_dp * pi * real(i-min_grad,dp) * hsv_freq(3) / real(max_grad-min_grad,dp) &
+          & - hue_offset) + 1)
      hsv_curr = hsv(i,:)
      call hsv_to_rgb(hsv_curr, rgb_curr, maxcol)
      rgb(i,:) = rgb_curr(:)
