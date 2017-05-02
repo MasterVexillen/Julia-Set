@@ -4,9 +4,9 @@ function f(z,c)
   integer, parameter :: dp = selected_real_kind(15,300)
   complex(kind=dp), intent(in) :: z, c
   complex(kind=dp) :: f
-  complex(kind=dp), external :: cmpsinh, cmplog
+  complex(kind=dp), external :: cmpsinh, cmplog, cmpexp
 
-  f = z**7 + c
+  f = z**2 + c
 end function f
 
 program julia
@@ -30,6 +30,7 @@ program julia
   real(kind=dp), dimension(3) :: hsv_curr
   real(kind=dp), dimension(3) :: hsv_freq
   integer, dimension(3) :: rgb_curr
+  integer, dimension(2) :: grad_curr
   integer, dimension(:,:), allocatable :: rgb
 
   ! read in parameters
@@ -59,7 +60,9 @@ program julia
   ranges(4) = ranges(3) + 0.5_dp * im_range
   ranges(3) = ranges(4) - im_range
   write(*, 10) 'Canvas domain: (', ranges(1), ',', ranges(2), ') x (', ranges(3), ',', ranges(4), ')'
+  write(*, 11) 'C = ', creal, ' +', cimag, 'i'
   10 format(A,F8.5,A,F8.5,A,F8.5,A,F8.5,A)
+  11 format(A,F8.5,A,F8.5,A)
   
   ! write ppm file headers
   out_unit = 16
@@ -95,12 +98,14 @@ program julia
         z = cmplx(ranges(1) + real(j*dx, dp), ranges(4) - real(i*dy, dp), dp)
         currstep = 0
         do while (currstep .lt. maxiter)
+!           print*, i, j, z
            z = f(z,c)
            currstep = currstep + 1
            if (abs(z) .lt. 1.0e-15_dp) then
               currstep = maxiter
               exit
            end if
+!           print*, i,j,z, abs(z)
            if (abs(z) .gt. maxrad) exit
         end do
         steps(i,j) = currstep
@@ -110,7 +115,8 @@ program julia
 
   do i = 2, pixel(2)-1
      do j = 2, pixel(1)-1
-        grad(i,j) = steps(i+1,j+1) + steps(i-1,j-1) - steps(i-1,j+1) - steps(i+1,j-1)
+        grad_curr = (/ steps(i+1,j)-steps(i-1,j), steps(i,j+1)-steps(i,j-1) /)
+        grad(i,j) = nint(norm2(real(grad_curr,dp)))
      end do
   end do
   min_grad = minval(grad)
@@ -159,11 +165,11 @@ program julia
 
   do i = min_grad, max_grad
      hsv(i,1) = mod(2.0_dp * pi * real(i-min_grad,dp) * hsv_freq(1) / real(max_grad-min_grad,dp) &
-          & + hue_offset, 2.0_dp * pi)
+          & , 2.0_dp * pi)
      hsv(i,2) = 0.5_dp * (sin(2.0_dp * pi * real(i-min_grad,dp) * hsv_freq(2) / real(max_grad-min_grad,dp) &
-          & - hue_offset) + 1)
+          & ) + 1)
      hsv(i,3) = 0.5_dp * (cos(2.0_dp * pi * real(i-min_grad,dp) * hsv_freq(3) / real(max_grad-min_grad,dp) &
-          & - hue_offset) + 1)
+          & ) + 1)
      hsv_curr = hsv(i,:)
      call hsv_to_rgb(hsv_curr, rgb_curr, maxcol)
      rgb(i,:) = rgb_curr(:)
@@ -265,3 +271,14 @@ function cmpsinh(z)
 
   cmpsinh = 0.5_dp * (exp(z) - exp(-z))
 end function cmpsinh
+
+function cmpexp(z)
+  implicit none
+
+  integer, parameter :: dp = selected_real_kind(15,300)
+
+  complex(kind=dp), intent(in) :: z
+  complex(kind=dp) :: cmpexp
+
+  cmpexp = cmplx(exp(real(z,dp))*cos(aimag(z)), exp(real(z,dp))*sin(aimag(z)), dp)
+end function cmpexp
