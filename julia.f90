@@ -1,27 +1,65 @@
-function f(z,c)
+module complex_stuffs
   implicit none
 
   integer, parameter :: dp = selected_real_kind(15,300)
-  complex(kind=dp), intent(in) :: z, c
-  complex(kind=dp) :: f
-  complex(kind=dp), external :: cmpsinh, cmplog, cmpexp
+  real(kind=dp), parameter :: pi = 3.141592653589793_dp
 
-  f = z**2 + c
-end function f
+contains
+  function f(z,c)
+    implicit none
+
+    complex(kind=dp), intent(in) :: z, c
+    complex(kind=dp) :: f
+
+    f = z**2 + c
+  end function f
+
+  function cmplog(z)
+    implicit none
+
+    complex(kind=dp), intent(in) :: z
+    complex(kind=dp) :: cmplog
+    real(kind=dp) :: arg
+
+    arg = atan(aimag(z)/real(z,dp))
+    cmplog = cmplx(log(abs(z)), arg, dp)
+  end function cmplog
+
+  function cmpsinh(z)
+    implicit none
+
+    complex(kind=dp), intent(in) :: z
+    complex(kind=dp) :: cmpsinh
+
+    cmpsinh = 0.5_dp * (exp(z) - exp(-z))
+  end function cmpsinh
+
+  function cmpsq(z)
+    implicit none
+
+    complex(kind=dp), intent(in) :: z
+    complex(kind=dp) :: cmpsq
+    real(kind=dp) :: r, i
+
+    r = sqrt(abs(z))
+    i = atan(aimag(z)/real(z))/2
+    cmpsq=cmplx(r,0,dp)*exp(cmplx(0,i,dp))
+
+  end function cmpsq
+  
+end module complex_stuffs
 
 program julia
+  use complex_stuffs
   implicit none
 
-  integer, parameter :: dp = selected_real_kind(15,300)
   integer, parameter :: maxcol = 256
-  real(kind=dp), parameter :: pi = 3.141592653589793_dp
 
   integer, dimension(2) :: pixel
 
   real(kind=dp), dimension(4) :: ranges ! (xmin, xmax, ymin, ymax)
 
   complex(kind=dp) :: z, c
-  complex(kind=dp), external :: f
   integer :: i, j, in_unit, out_unit, grad_unit, colour_unit, ierr
   integer :: maxiter, maxrad, currstep, maxstep, max_grad, min_grad
   real(kind=dp) :: dx, dy, creal, cimag, hue_offset, re_range, im_range
@@ -61,9 +99,9 @@ program julia
   ranges(3) = ranges(4) - im_range
   write(*, 10) 'Canvas domain: (', ranges(1), ',', ranges(2), ') x (', ranges(3), ',', ranges(4), ')'
   write(*, 11) 'C = ', creal, ' +', cimag, 'i'
-  10 format(A,F8.5,A,F8.5,A,F8.5,A,F8.5,A)
-  11 format(A,F8.5,A,F8.5,A)
-  
+10 format(A,F8.5,A,F8.5,A,F8.5,A,F8.5,A)
+11 format(A,F8.5,A,F8.5,A)
+
   ! write ppm file headers
   out_unit = 16
   open(out_unit, file='julia.ppm', status='replace', iostat=ierr)
@@ -74,13 +112,13 @@ program julia
   write(out_unit, '(I3.3)') maxcol
 
   grad_unit = 17
-  open(grad_unit, file='grad.ppm', status='replace', iostat=ierr)
-  if (ierr.ne.0) stop 'Error opening grad.ppm in main'
+  open(grad_unit, file='equi.ppm', status='replace', iostat=ierr)
+  if (ierr.ne.0) stop 'Error opening equi.ppm in main'
 
   write(grad_unit, '(A2)') 'P3'
   write(grad_unit, '(2(I4.4,1X))') pixel(1)-2, pixel(2)-2
   write(grad_unit, '(I3.3)') maxcol
-  
+
   ! calculations
   allocate(steps(pixel(2),pixel(1)), stat=ierr)
   if (ierr.ne.0) stop 'Error allocating steps in main.'
@@ -98,14 +136,14 @@ program julia
         z = cmplx(ranges(1) + real(j*dx, dp), ranges(4) - real(i*dy, dp), dp)
         currstep = 0
         do while (currstep .lt. maxiter)
-!           print*, i, j, z
+           !           print*, i, j, z
            z = f(z,c)
            currstep = currstep + 1
            if (abs(z) .lt. 1.0e-15_dp) then
               currstep = maxiter
               exit
            end if
-!           print*, i,j,z, abs(z)
+           !           print*, i,j,z, abs(z)
            if (abs(z) .gt. maxrad) exit
         end do
         steps(i,j) = currstep
@@ -121,7 +159,7 @@ program julia
   end do
   min_grad = minval(grad)
   max_grad = maxval(grad)
-        
+
   ! HSV colouring scheme for julia (+ conversion to RGB)
   allocate(hsv(maxstep, 3), stat=ierr)
   if (ierr.ne.0) stop 'Error allocating hsv in main.'
@@ -155,7 +193,7 @@ program julia
 
   deallocate(rgb, stat=ierr)
   if (ierr.ne.0) stop 'Error deallocating rgb in main.'
-  
+
   ! HSV colouring scheme for grad (+ conversion to RGB)
   allocate(hsv(min_grad:max_grad, 3), stat=ierr)
   if (ierr.ne.0) stop 'Error allocating hsv2 in main.'
@@ -193,7 +231,7 @@ program julia
 
   deallocate(grad, stat=ierr)
   if (ierr.ne.0) stop 'Error deallocating grad in main.'
- 
+
   close(in_unit, iostat=ierr)
   if (ierr.ne.0) stop 'Error closing julia.in in main.'
 
@@ -201,11 +239,11 @@ program julia
   if (ierr.ne.0) stop 'Error closing julia.ppm in main.'
 
   close(grad_unit, iostat=ierr)
-  if (ierr.ne.0) stop 'Error closing grad.ppm in main.'
-  
+  if (ierr.ne.0) stop 'Error closing equi.ppm in main.'
+
   close(colour_unit, iostat=ierr)
   if (ierr.ne.0) stop 'Error closing colour in main.'
-  
+
 end program julia
 
 subroutine hsv_to_rgb (hsv_array, rgb_array, maxcol)
@@ -247,38 +285,3 @@ subroutine hsv_to_rgb (hsv_array, rgb_array, maxcol)
      rgb_array(i) = nint(real(maxcol,dp)*(rgb_temp(i) + match))
   end do
 end subroutine hsv_to_rgb
-
-function cmplog(z)
-  implicit none
-
-  integer, parameter :: dp = selected_real_kind(15,300)
-
-  complex(kind=dp), intent(in) :: z
-  complex(kind=dp) :: cmplog
-  real(kind=dp) :: arg
-
-  arg = atan2(aimag(z), real(z,dp))
-  cmplog = cmplx(log(abs(z)), arg, dp)
-end function cmplog
-
-function cmpsinh(z)
-  implicit none
-
-  integer, parameter :: dp = selected_real_kind(15,300)
-  
-  complex(kind=dp), intent(in) :: z
-  complex(kind=dp) :: cmpsinh
-
-  cmpsinh = 0.5_dp * (exp(z) - exp(-z))
-end function cmpsinh
-
-function cmpexp(z)
-  implicit none
-
-  integer, parameter :: dp = selected_real_kind(15,300)
-
-  complex(kind=dp), intent(in) :: z
-  complex(kind=dp) :: cmpexp
-
-  cmpexp = cmplx(exp(real(z,dp))*cos(aimag(z)), exp(real(z,dp))*sin(aimag(z)), dp)
-end function cmpexp
