@@ -11,7 +11,7 @@ contains
     complex(kind=dp), intent(in) :: z, c
     complex(kind=dp) :: f
 
-    f = z**2 + c
+    f = z**6 + c
   end function f
 
   function cmplog(z)
@@ -34,22 +34,31 @@ contains
     cmpsinh = 0.5_dp * (exp(z) - exp(-z))
   end function cmpsinh
 
+  function cmppow(z,pow)
+    implicit none
+
+    complex(kind=dp), intent(in) :: z, pow
+    complex(kind=dp) :: cmppow, lnpow
+    real(kind=dp) :: z_abs, z_arg
+
+    z_abs = abs(z)
+    z_arg = atan(aimag(z)/real(z))
+    lnpow = cmplx(real(pow)*log(z_abs)-aimag(pow)*z_arg, aimag(pow)*log(z_abs)+real(pow)*z_arg, dp)
+    cmppow = exp(lnpow)
+  end function cmppow
+  
   function cmpsq(z)
     implicit none
 
     complex(kind=dp), intent(in) :: z
     complex(kind=dp) :: cmpsq
-    real(kind=dp) :: r, i
 
-    r = sqrt(abs(z))
-    i = atan(aimag(z)/real(z))/2
-    cmpsq=cmplx(r,0,dp)*exp(cmplx(0,i,dp))
-
+    cmpsq = cmppow(z,cmplx(0.5_dp,0.0_dp,dp))
   end function cmpsq
   
 end module complex_stuffs
 
-program julia
+program julia_all
   use complex_stuffs
   implicit none
 
@@ -63,13 +72,13 @@ program julia
   integer :: i, j, in_unit, out_unit, grad_unit, colour_unit, ierr
   integer :: maxiter, maxrad, currstep, maxstep, max_grad, min_grad
   real(kind=dp) :: dx, dy, creal, cimag, hue_offset, re_range, im_range
-  real(kind=dp), dimension(:,:), allocatable :: hsv
   integer, dimension(:,:), allocatable :: steps, grad
   real(kind=dp), dimension(3) :: hsv_curr
   real(kind=dp), dimension(3) :: hsv_freq
   integer, dimension(3) :: rgb_curr
   integer, dimension(2) :: grad_curr
-  integer, dimension(:,:), allocatable :: rgb
+    real(kind=dp), dimension(:,:), allocatable :: hsv
+    integer, dimension(:,:), allocatable :: rgb
 
   ! read in parameters
   in_unit = 15
@@ -130,27 +139,29 @@ program julia
   dx = (ranges(2)-ranges(1)) / real(pixel(1),dp)
   dy = (ranges(4)-ranges(3)) / real(pixel(2),dp)
 
-  maxstep = 0
-  do i = 1, pixel(2)
+  !$OMP PARALLEL DO &
+  !$OMP DEFAULT(NONE) &
+  !$OMP PRIVATE(i,j,z,currstep) &
+  !$OMP SHARED(c,pixel,ranges,dx,dy,maxiter,maxrad,steps)
+   do i = 1, pixel(2)
      do j = 1, pixel(1)
         z = cmplx(ranges(1) + real(j*dx, dp), ranges(4) - real(i*dy, dp), dp)
         currstep = 0
         do while (currstep .lt. maxiter)
-           !           print*, i, j, z
            z = f(z,c)
            currstep = currstep + 1
            if (abs(z) .lt. 1.0e-15_dp) then
               currstep = maxiter
               exit
            end if
-           !           print*, i,j,z, abs(z)
            if (abs(z) .gt. maxrad) exit
         end do
         steps(i,j) = currstep
-        if (currstep.gt.maxstep) maxstep = currstep
      end do
   end do
-
+  !$OMP END PARALLEL DO
+  maxstep = maxval(steps)
+  
   do i = 2, pixel(2)-1
      do j = 2, pixel(1)-1
         grad_curr = (/ steps(i+1,j)-steps(i-1,j), steps(i,j+1)-steps(i,j-1) /)
@@ -160,71 +171,8 @@ program julia
   min_grad = minval(grad)
   max_grad = maxval(grad)
 
-  ! HSV colouring scheme for julia (+ conversion to RGB)
-  allocate(hsv(maxstep, 3), stat=ierr)
-  if (ierr.ne.0) stop 'Error allocating hsv in main.'
-
-  allocate(rgb(maxstep, 3), stat=ierr)
-  if (ierr.ne.0) stop 'Error allocating rgb in main.'
-
-  colour_unit = 18
-  open(colour_unit, file='colour', status='replace', iostat=ierr)
-  if (ierr.ne.0) stop 'Error opening colour in main'
-
-  hue_offset = hue_offset * pi / 180.0_dp
-  do i = 1, maxstep
-     hsv(i,1) = mod(2.0_dp * pi * real(i,dp) * hsv_freq(1) / real(maxstep,dp) + hue_offset, 2.0_dp * pi)
-     hsv(i,2) = 0.5_dp * (sin(2.0_dp * pi * i * hsv_freq(2) / real(maxstep,dp) - hue_offset) + 1)
-     hsv(i,3) = 0.5_dp * (cos(2.0_dp * pi * i * hsv_freq(3) / real(maxstep,dp) - hue_offset) + 1)
-     hsv_curr = hsv(i,:)
-     call hsv_to_rgb(hsv_curr, rgb_curr, maxcol)
-     rgb(i,:) = rgb_curr(:)
-  end do
-
-  ! output julia
-  do i = 1, pixel(2)
-     do j = 1, pixel(1)
-        write(out_unit, '(3(i3.3,1x))') rgb(steps(i,j),:)
-     end do
-  end do
-
-  deallocate(hsv, stat=ierr)
-  if (ierr.ne.0) stop 'Error deallocating hsv in main.'
-
-  deallocate(rgb, stat=ierr)
-  if (ierr.ne.0) stop 'Error deallocating rgb in main.'
-
-  ! HSV colouring scheme for grad (+ conversion to RGB)
-  allocate(hsv(min_grad:max_grad, 3), stat=ierr)
-  if (ierr.ne.0) stop 'Error allocating hsv2 in main.'
-
-  allocate(rgb(min_grad:max_grad, 3), stat=ierr)
-  if (ierr.ne.0) stop 'Error allocating rgb2 in main.'
-
-  do i = min_grad, max_grad
-     hsv(i,1) = mod(2.0_dp * pi * real(i-min_grad,dp) * hsv_freq(1) / real(max_grad-min_grad,dp) &
-          & , 2.0_dp * pi)
-     hsv(i,2) = 0.5_dp * (sin(2.0_dp * pi * real(i-min_grad,dp) * hsv_freq(2) / real(max_grad-min_grad,dp) &
-          & ) + 1)
-     hsv(i,3) = 0.5_dp * (cos(2.0_dp * pi * real(i-min_grad,dp) * hsv_freq(3) / real(max_grad-min_grad,dp) &
-          & ) + 1)
-     hsv_curr = hsv(i,:)
-     call hsv_to_rgb(hsv_curr, rgb_curr, maxcol)
-     rgb(i,:) = rgb_curr(:)
-  end do
-
-  ! output grad
-  do i = 2, pixel(2)-1
-     do j = 2, pixel(1)-1
-        write(grad_unit, '(3(i3.3,1x))') rgb(grad(i,j),:)
-     end do
-  end do
-
-  deallocate(hsv, stat=ierr)
-  if (ierr.ne.0) stop 'Error deallocating hsv in main.'
-
-  deallocate(rgb, stat=ierr)
-  if (ierr.ne.0) stop 'Error deallocating rgb in main.'
+  call julia_out()
+  call equipot_out()
 
   deallocate(steps, stat=ierr)
   if (ierr.ne.0) stop 'Error deallocating steps in main.'
@@ -244,7 +192,78 @@ program julia
   close(colour_unit, iostat=ierr)
   if (ierr.ne.0) stop 'Error closing colour in main.'
 
-end program julia
+contains
+  subroutine julia_out()
+    ! HSV colouring scheme for julia (+ conversion to RGB)
+    allocate(hsv(maxstep, 3), stat=ierr)
+    if (ierr.ne.0) stop 'Error allocating hsv in main.'
+
+    allocate(rgb(maxstep, 3), stat=ierr)
+    if (ierr.ne.0) stop 'Error allocating rgb in main.'
+
+    colour_unit = 18
+    open(colour_unit, file='colour', status='replace', iostat=ierr)
+    if (ierr.ne.0) stop 'Error opening colour in main'
+
+    hue_offset = hue_offset * pi / 180.0_dp
+    do i = 1, maxstep
+       hsv(i,1) = mod(2.0_dp * pi * real(i,dp) * hsv_freq(1) / real(maxstep,dp) + hue_offset, 2.0_dp * pi)
+       hsv(i,2) = 0.5_dp * (sin(2.0_dp * pi * i * hsv_freq(2) / real(maxstep,dp) - hue_offset) + 1)
+       hsv(i,3) = 0.5_dp * (cos(2.0_dp * pi * i * hsv_freq(3) / real(maxstep,dp) - hue_offset) + 1)
+       hsv_curr = hsv(i,:)
+       call hsv_to_rgb(hsv_curr, rgb_curr, maxcol)
+       rgb(i,:) = rgb_curr(:)
+    end do
+
+    ! output julia
+    do i = 1, pixel(2)
+       do j = 1, pixel(1)
+          write(out_unit, '(3(i3.3,1x))') rgb(steps(i,j),:)
+       end do
+    end do
+
+    deallocate(hsv, stat=ierr)
+    if (ierr.ne.0) stop 'Error deallocating hsv in main.'
+
+    deallocate(rgb, stat=ierr)
+    if (ierr.ne.0) stop 'Error deallocating rgb in main.'
+  end subroutine julia_out
+
+  subroutine equipot_out()
+    ! HSV colouring scheme for grad (+ conversion to RGB)
+    allocate(hsv(min_grad:max_grad, 3), stat=ierr)
+    if (ierr.ne.0) stop 'Error allocating hsv2 in main.'
+
+    allocate(rgb(min_grad:max_grad, 3), stat=ierr)
+    if (ierr.ne.0) stop 'Error allocating rgb2 in main.'
+
+    do i = min_grad, max_grad
+       hsv(i,1) = mod(2.0_dp * pi * real(i-min_grad,dp) * hsv_freq(1) / real(max_grad-min_grad,dp) &
+            & , 2.0_dp * pi)
+       hsv(i,2) = 0.5_dp * (sin(2.0_dp * pi * real(i-min_grad,dp) * hsv_freq(2) / real(max_grad-min_grad,dp) &
+            & ) + 1)
+       hsv(i,3) = 0.5_dp * (cos(2.0_dp * pi * real(i-min_grad,dp) * hsv_freq(3) / real(max_grad-min_grad,dp) &
+            & ) + 1)
+       hsv_curr = hsv(i,:)
+       call hsv_to_rgb(hsv_curr, rgb_curr, maxcol)
+       rgb(i,:) = rgb_curr(:)
+    end do
+
+    ! output grad
+    do i = 2, pixel(2)-1
+       do j = 2, pixel(1)-1
+          write(grad_unit, '(3(i3.3,1x))') rgb(grad(i,j),:)
+       end do
+    end do
+
+    deallocate(hsv, stat=ierr)
+    if (ierr.ne.0) stop 'Error deallocating hsv in main.'
+
+    deallocate(rgb, stat=ierr)
+    if (ierr.ne.0) stop 'Error deallocating rgb in main.'
+  end subroutine equipot_out
+
+end program julia_all
 
 subroutine hsv_to_rgb (hsv_array, rgb_array, maxcol)
   implicit none
@@ -285,3 +304,4 @@ subroutine hsv_to_rgb (hsv_array, rgb_array, maxcol)
      rgb_array(i) = nint(real(maxcol,dp)*(rgb_temp(i) + match))
   end do
 end subroutine hsv_to_rgb
+
