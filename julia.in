@@ -1,14 +1,17 @@
 # size (px) of canvas
-900 600
+1920 1080
 
 # plot range (Re_ctr, Im_ctr, Re_range) --- Im_range will be determined from size of canvas automatically
-0 0 3
+0 0 3.5
 
 # max_iter, escape
-5000 75
+1500 65
 
 # Hue scaling, saturation osc. freq., value osc. freq., hue offset(deg)
-5 12 12 240
+3.5 15 15 240
 
 # C (Re, Im)
--.7269 .1889
+-.7268 .1889
+
+# Step number and radius limit for Newton-Raphson
+6 8

@@ -1,0 +1,60 @@
+#FC because Fortran Compiler, not C Compiler
+FC = gfortran
+
+#Set openmp parallelisation
+OMP = true
+
+#Add manual flags here
+FFLAGS =
+OPT=3
+EXECUTABLE = a.out
+MAIN_SOURCE = quantum.f90
+
+#I like to have these lists for easy cleaning and dependencies. You may need to reverse the order as I can't remember whether it goes from front to back or vice versa
+SOURCES = quantum.f90
+OBJECTS = quantum.o
+MODULES = quantum.mod
+
+#Set to "true" to use debugging flags. This means that you can issue the command:
+DEBUG=
+
+#Set debug flags and disable optimisation
+ifeq ($(DEBUG),true)
+FFLAGS += -fbacktrace -Wextra -Wconversion -pedantic -g -O0 -fno-range-check -ffpe-trap=overflow,underflow
+OPT=0
+endif
+
+#If we're O3 go balls to the wall
+ifeq ($(OPT),3)
+FFLAGS += -Wall -Wextra -Wconversion -funroll-loops
+endif
+
+#Actually add in the opt flag
+FFLAGS += -O$(OPT)
+
+#Add OMP flag if needed
+ifeq (${OMP},true)
+FFLAGS += -fopenmp
+endif
+
+#Specify these aren't actually files we're making
+.PHONY : all clean
+
+all: main
+
+#Clean up
+clean:
+	rm -f $(MODULES) $(OBJECTS) $(EXECUTABLE)
+
+#Main depends on these things
+main: $(OBJECTS) $(MAIN_SOURCE)
+	$(FC) $(FFLAGS) $(OBJECTS) -o $(EXECUTABLE)
+
+
+#For any file which is an object, it requires its related f90 this can be overridden by placing explicitly named rules before it, e.g.:
+# comms.o: comms.$(PARALLEL).f90
+# 	$(FC) $(FFLAGS) -c -o $@ $<
+
+%.o : %.f90
+	$(FC) $(FFLAGS) -c $<
+

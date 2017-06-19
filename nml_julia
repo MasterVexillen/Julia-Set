@@ -1,0 +1,17 @@
+&inp
+ pixel = 1920,1080
+
+ re_ctr = 0
+ im_ctr = 0
+ re_range = 3.5
+ 
+ max_iter = 1500
+ max_rad = 65
+
+ hsv_freq = 3.5 , 15. , 15.
+ hue_offset = 240
+/
+
+&param
+ cval = -.7268 , .1889
+/
